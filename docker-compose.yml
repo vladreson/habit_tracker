@@ -1,0 +1,90 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - habit_network
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - habit_network
+
+  django:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             gunicorn --bind 0.0.0.0:8000 config.wsgi:application"
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: ${DEBUG}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    networks:
+      - habit_network
+
+  celery:
+    build: .
+    command: celery -A config worker --loglevel=info
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      SECRET_KEY: ${SECRET_KEY}
+      REDIS_URL: redis://redis:6379/0
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - db
+      - redis
+      - django
+    networks:
+      - habit_network
+
+  celery_beat:
+    build: .
+    command: celery -A config beat --loglevel=info
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      SECRET_KEY: ${SECRET_KEY}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+      - django
+    networks:
+      - habit_network
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+    networks:
+      - habit_network
+
+volumes:
+  postgres_data:
+
+networks:
+  habit_network:
