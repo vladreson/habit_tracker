@@ -41,4 +41,4 @@ htmlcov/
 staticfiles/
 
 # Database
-*.db
+*.db.env.production
