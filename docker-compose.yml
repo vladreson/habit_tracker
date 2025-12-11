@@ -1,90 +1,90 @@
-version: '3.8'
 services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: habits_db
+      POSTGRES_USER: habit_user
+      POSTGRES_PASSWORD: StrongPass123
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - habit_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U habit_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   redis:
     image: redis:7-alpine
-    networks:
-      - habit_network
 
   django:
     build: .
     command: >
-      sh -c "python manage.py migrate &&
-             gunicorn --bind 0.0.0.0:8000 config.wsgi:application"
+      sh -c "sleep 5 &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
     environment:
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: habits_db
+      DB_USER: habit_user
+      DB_PASSWORD: StrongPass123
       DB_HOST: db
-      SECRET_KEY: ${SECRET_KEY}
-      DEBUG: ${DEBUG}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      REDIS_URL: redis://redis:6379/0
-    volumes:
-      - .:/app
+      DB_PORT: 5432
+      SECRET_KEY: yc4=8-352@(vs34si8(gfp5go(s5m-gz*vg@v%8xcc38)rue4b
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
+      CELERY_BROKER_URL: redis://redis:6379/0
     depends_on:
-      - db
-      - redis
-    networks:
-      - habit_network
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ~/habit_tracker:/app
 
   celery:
     build: .
     command: celery -A config worker --loglevel=info
     environment:
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: habits_db
+      DB_USER: habit_user
+      DB_PASSWORD: StrongPass123
       DB_HOST: db
-      SECRET_KEY: ${SECRET_KEY}
-      REDIS_URL: redis://redis:6379/0
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SECRET_KEY: yc4=8-352@(vs34si8(gfp5go(s5m-gz*vg@v%8xcc38)rue4b
+      DEBUG: "True"
+      CELERY_BROKER_URL: redis://redis:6379/0
     depends_on:
       - db
       - redis
       - django
-    networks:
-      - habit_network
+    volumes:
+      - ~/habit_tracker:/app
 
-  celery_beat:
-    build: .
-    command: celery -A config beat --loglevel=info
-    environment:
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: db
-      SECRET_KEY: ${SECRET_KEY}
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      - db
-      - redis
-      - django
-    networks:
-      - habit_network
+  # ВРЕМЕННО ЗАКОММЕНТИРУЙТЕ celery_beat - он вызывает конфликты
+  # celery_beat:
+  #   build: .
+  #   command: celery -A config beat --loglevel=info
+  #   environment:
+  #     DB_NAME: habits_db
+  #     DB_USER: habit_user
+  #     DB_PASSWORD: StrongPass123
+  #     DB_HOST: db
+  #     SECRET_KEY: yc4=8-352@(vs34si8(gfp5go(s5m-gz*vg@v%8xcc38)rue4b
+  #     DEBUG: "True"
+  #     CELERY_BROKER_URL: redis://redis:6379/0
+  #   depends_on:
+  #     - db
+  #     - redis
+  #     - django
+  #   volumes:
+  #     - ~/habit_tracker:/app
 
   nginx:
-    build: ./nginx
+    image: nginx:alpine
     ports:
       - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - django
-    networks:
-      - habit_network
 
 volumes:
   postgres_data:
-
-networks:
-  habit_network:
